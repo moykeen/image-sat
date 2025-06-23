@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QShortcut,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -181,6 +182,13 @@ class MainWindow(QMainWindow):
         zoom_out_action = toolbar.addAction("Zoom Out")
         zoom_out_action.triggered.connect(lambda: self._graphics_view.scale(0.8, 0.8))
 
+        # S/EキーでSAM・消しゴム切替のグローバルショートカット
+        self._sam_shortcut = QShortcut(QKeySequence("S"), self)
+        self._sam_shortcut.activated.connect(self.sam_checkbox.toggle)
+
+        self._eraser_shortcut = QShortcut(QKeySequence("E"), self)
+        self._eraser_shortcut.activated.connect(self._activate_eraser_mode)
+
         # self._curr_id = 0
         self._graphics_view.set_brush_color(QColor(colors[0]))
         self.cs_list.setCurrentRow(0)
@@ -318,8 +326,6 @@ class MainWindow(QMainWindow):
     def keyPressEvent(self, a0: QKeyEvent) -> None:
         if a0.key() == Qt.Key.Key_Space:
             self._graphics_view.reset_zoom()
-        elif a0.key() == Qt.Key.Key_S:
-            self.sam_checkbox.toggle()
         elif a0.key() == Qt.Key.Key_C:
             reply = QMessageBox.question(
                 self,
@@ -330,10 +336,6 @@ class MainWindow(QMainWindow):
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self._graphics_view.clear_label()
-        elif a0.key() == Qt.Key.Key_E:
-            self.cs_list.clearSelection()
-            self._graphics_view.set_eraser(True)
-            self.sam_checkbox.setChecked(False)  # SAM自動オフ
         elif a0.key() in range(49, 58):
             num_key = int(a0.key()) - 48
             color = self._id2color.get(num_key)
@@ -356,6 +358,11 @@ class MainWindow(QMainWindow):
     def closeEvent(self, a0: QCloseEvent) -> None:
         self.save_current_label()
         return super().closeEvent(a0)
+
+    def _activate_eraser_mode(self):
+        self.cs_list.clearSelection()
+        self._graphics_view.set_eraser(True)
+        self.sam_checkbox.setChecked(False)  # SAM自動オフ
 
     def on_sam_run_clicked(self):
         if self.segmentation_model is None:
