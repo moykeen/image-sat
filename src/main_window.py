@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -34,14 +35,17 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Image segmentation annotation tool")
         self.resize(1000, 1400)
 
-        top_work_dir = Path("work")
-        workdir = os.environ["WORKSET"]
+        top_work_dir = Path(os.environ["TOP_WORK_DIR"]).expanduser()
+        workset = os.environ["WORKSET"]
+        accepted = os.environ["ACCEPTED"]
         segmentation_model_path = os.environ["SEGMENTATION_MODEL"]
 
-        self._workdir = top_work_dir / workdir
+        self._workdir = top_work_dir / workset
         self._class_dir = top_work_dir / "classes.json"
         self._image_dir = self._workdir / "images"
         self._label_dir = self._workdir / "labels"
+        self._accepted_image_dir = top_work_dir / accepted / "images"
+        self._accepted_label_dir = top_work_dir / accepted / "labels"
         self._sam_dir = self._workdir / "sam"
         self._label_dir.mkdir(exist_ok=True)
 
@@ -151,9 +155,13 @@ class MainWindow(QMainWindow):
         self.next_button = QPushButton("next")
         self.next_button.clicked.connect(lambda: self._switch_sample_by(1))
 
+        self.accept_button = QPushButton("accept")
+        self.accept_button.clicked.connect(lambda: self._accept_annotation())
+
         nav_hlay = QHBoxLayout(nav_group)
         nav_hlay.addWidget(self.prev_button)
         nav_hlay.addWidget(self.next_button)
+        nav_hlay.addWidget(self.accept_button)
 
         vlay = QVBoxLayout()
         vlay.addWidget(ds_group)
@@ -244,6 +252,21 @@ class MainWindow(QMainWindow):
         curr_label_path = self._label_dir / (self._current_image_path.stem + ".png")
         self._graphics_view.save_label_to(curr_label_path)
 
+    def accept_current_label(self):
+        # get hash value  of the image
+        with open(self._current_image_path, "rb") as f:
+            bytes = f.read()
+            hash_val = hashlib.md5(bytes).hexdigest()
+            print("hash value:", hash_val)
+
+        shutil.copy(
+            self._current_image_path,
+            self._accepted_image_dir / f"{hash_val}{self._current_image_path.suffix}",
+        )
+
+        curr_label_path = self._accepted_label_dir / (hash_val + ".png")
+        self._graphics_view.save_label_to(curr_label_path)
+
     def save_undo_state(self):
         """現在のラベル状態を番号付きファイル名で保存"""
         self._curr_undo_index += 1
@@ -322,6 +345,9 @@ class MainWindow(QMainWindow):
         self.save_current_label()
         self._load_sample(new_image_path)
         self._reset_undo_history()
+
+    def _accept_annotation(self):
+        self.accept_current_label()
 
     def keyPressEvent(self, a0: QKeyEvent) -> None:
         if a0.key() == Qt.Key.Key_Space:
