@@ -1,7 +1,3 @@
-import hashlib
-import json
-import os
-import shutil
 from pathlib import Path
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
@@ -22,7 +18,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from .logic.segmentation import SegmentationModel
+from .data_store import DataStore
 from .ui.graphics_view import GraphicsView
 
 
@@ -30,30 +26,13 @@ class MainWindow(QMainWindow):
     brush_feedback = pyqtSignal(int)  # allows QSlider react on mouse wheel
     sam_signal = pyqtSignal(bool)  # used to propagate sam mode to all widgets
 
-    def __init__(self):
+    def __init__(self, data_store: DataStore):
         super(MainWindow, self).__init__()
         self.setWindowTitle("Image segmentation annotation tool")
         self.resize(1000, 1400)
 
-        top_work_dir = Path(os.environ["TOP_WORK_DIR"]).expanduser()
-        workset = os.environ["WORKSET"]
-        accepted = os.environ["ACCEPTED"]
-        segmentation_model_path = os.environ["SEGMENTATION_MODEL"]
-
-        self._workdir = top_work_dir / workset
-        self._class_dir = top_work_dir / "classes.json"
-        self._image_dir = self._workdir / "images"
-        self._label_dir = self._workdir / "labels"
-        self._accepted_image_dir = top_work_dir / accepted / "images"
-        self._accepted_label_dir = top_work_dir / accepted / "labels"
-        self._sam_dir = self._workdir / "sam"
-        self._label_dir.mkdir(exist_ok=True)
-
-        with open(self._class_dir, "r") as f:
-            self._classes = json.loads("".join(f.readlines()))["classes"]
-        ids = [c["id"] for c in self._classes]
-        colors = [c["color"] for c in self._classes]
-        self._id2color = {k: v for k, v in zip(ids, colors)}
+        self._data_store = data_store
+        self._id2color = self._data_store.load_id2color()
 
         self.brush_feedback.connect(self.on_brush_size_change)
         self._graphics_view = GraphicsView(
@@ -75,24 +54,24 @@ class MainWindow(QMainWindow):
         # Layers group
         ls_group = QGroupBox(self.tr("Layers"))
 
+        default_label_opacity = 50
         self.ls_label_value = QLabel()
-        self.ls_label_value.setText("Label opacity: 50%")
-
+        self.ls_label_value.setText(f"Label opacity: {default_label_opacity}%")
         self.ls_label_slider = QSlider()
         self.ls_label_slider.setOrientation(Qt.Orientation.Horizontal)
         self.ls_label_slider.setMinimum(0)
         self.ls_label_slider.setMaximum(100)
-        self.ls_label_slider.setSliderPosition(50)
+        self.ls_label_slider.setSliderPosition(default_label_opacity)
         self.ls_label_slider.valueChanged.connect(self.on_ls_label_slider_change)
 
+        default_sam_opacity = 0
         self.ls_sam_value = QLabel()
-        self.ls_sam_value.setText("SAM opacity: 0%")
-
+        self.ls_sam_value.setText(f"SAM opacity: {default_sam_opacity}%")
         self.ls_sam_slider = QSlider()
         self.ls_sam_slider.setOrientation(Qt.Orientation.Horizontal)
         self.ls_sam_slider.setMinimum(0)
         self.ls_sam_slider.setMaximum(100)
-        self.ls_sam_slider.setSliderPosition(0)
+        self.ls_sam_slider.setSliderPosition(default_label_opacity)
         self.ls_sam_slider.valueChanged.connect(self.on_ls_sam_slider_change)
 
         ls_vlay = QVBoxLayout(ls_group)
@@ -116,14 +95,14 @@ class MainWindow(QMainWindow):
         # Brush size group
         bs_group = QGroupBox(self.tr("Brush"))
 
+        default_bs_size = 50
         self.bs_value = QLabel()
-        self.bs_value.setText("Size: 50 px")
-
+        self.bs_value.setText(f"Size: {default_bs_size} px")
         self.bs_slider = QSlider()
         self.bs_slider.setOrientation(Qt.Orientation.Horizontal)
         self.bs_slider.setMinimum(1)
         self.bs_slider.setMaximum(150)
-        self.bs_slider.setSliderPosition(50)
+        self.bs_slider.setSliderPosition(default_bs_size)
         self.bs_slider.valueChanged.connect(self.on_bs_slider_change)
 
         bs_vlay = QVBoxLayout(bs_group)
@@ -134,7 +113,7 @@ class MainWindow(QMainWindow):
         cs_group = QGroupBox(self.tr("Classes"))
 
         self.cs_list = QListWidget()
-        for i, c in enumerate(self._classes):
+        for i, c in enumerate(self._data_store.classes):
             color = QColor(c["color"])
             pixmap = QPixmap(20, 20)
             pixmap.fill(color)
@@ -197,21 +176,10 @@ class MainWindow(QMainWindow):
         self._eraser_shortcut = QShortcut(QKeySequence("E"), self)
         self._eraser_shortcut.activated.connect(self._activate_eraser_mode)
 
-        # self._curr_id = 0
-        self._graphics_view.set_brush_color(QColor(colors[0]))
+        self._graphics_view.set_brush_color(QColor(self._id2color[1]))
         self.cs_list.setCurrentRow(0)
 
-        self._undo_history_dir = top_work_dir / "undo_history"
-        self._undo_history_dir.mkdir(exist_ok=True)
-        self._curr_undo_index = 0
-
-        self._reset_undo_history()  # 初回起動時に履歴をリセット
-
-        self.segmentation_model = (
-            SegmentationModel(segmentation_model_path)
-            if segmentation_model_path
-            else None
-        )
+        self._reset_undo_history()
 
     @pyqtSlot(int)
     def on_sam_change(self, state: int):
@@ -249,83 +217,44 @@ class MainWindow(QMainWindow):
         self._graphics_view.set_brush_color(QColor(color))
 
     def save_current_label(self):
-        curr_label_path = self._label_dir / (self._current_image_path.stem + ".png")
-        self._graphics_view.save_label_to(curr_label_path)
+        self._graphics_view.save_label_to(self._data_store.get_current_label_path())
 
     def accept_current_label(self):
-        # get hash value  of the image
-        with open(self._current_image_path, "rb") as f:
-            bytes = f.read()
-            hash_val = hashlib.md5(bytes).hexdigest()
-            print("hash value:", hash_val)
-
-        shutil.copy(
-            self._current_image_path,
-            self._accepted_image_dir / f"{hash_val}{self._current_image_path.suffix}",
+        self._data_store.transfer_image_to_accept(
+            label_saver=self._graphics_view.save_label_to
         )
 
-        curr_label_path = self._accepted_label_dir / (hash_val + ".png")
-        self._graphics_view.save_label_to(curr_label_path)
-
     def save_undo_state(self):
-        """現在のラベル状態を番号付きファイル名で保存"""
-        self._curr_undo_index += 1
-        undo_file = self._undo_history_dir / f"undo_{self._curr_undo_index}.png"
+        undo_file = self._data_store.save_undo_state()
         self._graphics_view.save_label_to(undo_file)
 
     def undo(self):
-        """Undo操作を実行"""
-        print("Undo operation triggered", self._curr_undo_index)
-        if self._curr_undo_index > 0:
-            self._curr_undo_index -= 1
-            undo_file = self._undo_history_dir / f"undo_{self._curr_undo_index}.png"
-            if undo_file.exists():
-                self._update_label(undo_file)
+        undo_file = self._data_store.undo()
+        if undo_file:
+            self._update_label(undo_file)
 
     def redo(self):
-        """Redo操作を実行"""
-        redo_file = self._undo_history_dir / f"undo_{self._curr_undo_index + 1}.png"
-        if redo_file.exists():
-            self._curr_undo_index += 1
+        redo_file = self._data_store.redo()
+        if redo_file:
             self._update_label(redo_file)
 
     def _reset_undo_history(self):
-        """履歴をリセット"""
-        if self._undo_history_dir.exists():
-            shutil.rmtree(self._undo_history_dir)
-        self._undo_history_dir.mkdir(exist_ok=True)
-        self._curr_undo_index = -1
-
-        # 初期状態のラベルを保存
+        self._data_store.reset_undo_history()
         self.save_undo_state()
 
-    def _load_sample(
-        self,
-        image_path: Path,
-        label_path: Path | None = None,
-        fit: bool = True,
-    ):
-        self._current_image_path = image_path
-        name = self._current_image_path.stem + ".png"
-
-        if label_path is None:
-            label_path = self._label_dir / name
-
-        sam_path = self._sam_dir / name
-        self._graphics_view.load_sample(
-            self._current_image_path, label_path, sam_path, fit=fit
-        )
+    def _load_sample(self, image_path: Path, fit: bool = True):
+        self._data_store.current_image_path = image_path
+        name = image_path.stem + ".png"
+        label_path = self._data_store.label_dir / name
+        sam_path = self._data_store.sam_dir / name
+        self._graphics_view.load_sample(image_path, label_path, sam_path, fit=fit)
         self.ds_label.setText(f"{name[:30]}")
 
     def _update_label(self, label_path: Path):
         self._graphics_view.update_label(label_path)
 
-    def _get_sorted_images(self):
-        """画像ディレクトリ内の画像を更新日時順にソートして取得"""
-        return sorted(self._image_dir.iterdir(), key=lambda p: p.stat().st_mtime)
-
     def load_latest_sample(self):
-        images = self._get_sorted_images()
+        images = self._data_store.get_sorted_images()
         self._load_sample(images[-1])  # 最新の画像を読み込む
 
     def _switch_sample_by(self, step: int):
@@ -333,9 +262,9 @@ class MainWindow(QMainWindow):
         if step == 0:
             return
 
-        images = self._get_sorted_images()
+        images = self._data_store.get_sorted_images()
         try:
-            current_index = images.index(self._current_image_path)
+            current_index = images.index(self._data_store.current_image_path)
         except ValueError:
             current_index = 0
 
@@ -344,7 +273,7 @@ class MainWindow(QMainWindow):
 
         self.save_current_label()
         self._load_sample(new_image_path)
-        self._reset_undo_history()
+        self._data_store.reset_undo_history()
 
     def _accept_annotation(self):
         self.accept_current_label()
@@ -391,15 +320,13 @@ class MainWindow(QMainWindow):
         self.sam_checkbox.setChecked(False)  # SAM自動オフ
 
     def on_sam_run_clicked(self):
-        if self.segmentation_model is None:
+        print("SAM run button clicked")
+        try:
+            sam_path = self._data_store.run_sam()
+            self._graphics_view.update_sam(sam_path)
+        except Exception:
             QMessageBox.warning(
                 self,
                 "No Segmentation Model",
                 "Segmentation model is not set. Please provide a valid model path.",
             )
-            return
-        print("SAM run button clicked")
-
-        sam_path = self._sam_dir / (self._current_image_path.stem + ".png")
-        self.segmentation_model.segment_image(self._current_image_path, sam_path)
-        self._graphics_view.update_sam(sam_path)
