@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QGraphicsRectItem, QGraphicsSceneMouseEvent
 class LabelLayer(QGraphicsRectItem):
     def __init__(self, parent, sam_signal):
         super().__init__(parent)
-        self.setOpacity(0.5)
+        self.setOpacity(0.35)
         self.setPen(QPen(Qt.PenStyle.NoPen))
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
 

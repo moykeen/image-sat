@@ -20,7 +20,9 @@ class DataStore:
         self.label_dir = self.workdir / "labels"
         self.accepted_image_dir = top_work_dir / accepted / "images"
         self.accepted_label_dir = top_work_dir / accepted / "labels"
+        self.accepted_roi_dir = top_work_dir / accepted / "roi"
         self.sam_dir = self.workdir / "sam"
+        self.roi_dir = self.workdir / "roi"
         self.label_dir.mkdir(exist_ok=True)
 
         self.undo_history_dir = top_work_dir / "undo_history"
@@ -46,8 +48,13 @@ class DataStore:
         return sorted(self.image_dir.iterdir(), key=lambda p: p.stat().st_mtime)
 
     def get_current_label_path(self) -> Path:
-        curr_label_path = self.label_dir / (self.current_image_path.stem + ".png")
-        return curr_label_path
+        return self.label_dir / (self.current_image_path.stem + ".png")
+
+    def get_current_sam_path(self):
+        return self.sam_dir / (self.current_image_path.stem + ".png")
+
+    def get_current_roi_path(self):
+        return self.roi_dir / (self.current_image_path.stem + ".png")
 
     def transfer_image_to_accept(self, label_saver):
         # get hash value  of the image
@@ -59,6 +66,10 @@ class DataStore:
         shutil.copy(
             self.current_image_path,
             self.accepted_image_dir / f"{hash_val}{self.current_image_path.suffix}",
+        )
+
+        shutil.copy(
+            self.get_current_roi_path(), self.accepted_roi_dir / f"{hash_val}.png"
         )
 
         label_path = self.accepted_label_dir / (hash_val + ".png")

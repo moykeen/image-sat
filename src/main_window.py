@@ -29,7 +29,7 @@ class MainWindow(QMainWindow):
     def __init__(self, data_store: DataStore):
         super(MainWindow, self).__init__()
         self.setWindowTitle("Image segmentation annotation tool")
-        self.resize(1000, 1400)
+        self.resize(1400, 1800)
 
         self._data_store = data_store
         self._id2color = self._data_store.load_id2color()
@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
         # Layers group
         ls_group = QGroupBox(self.tr("Layers"))
 
-        default_label_opacity = 50
+        default_label_opacity = 35
         self.ls_label_value = QLabel()
         self.ls_label_value.setText(f"Label opacity: {default_label_opacity}%")
         self.ls_label_slider = QSlider()
@@ -71,12 +71,24 @@ class MainWindow(QMainWindow):
         self.ls_sam_slider.setOrientation(Qt.Orientation.Horizontal)
         self.ls_sam_slider.setMinimum(0)
         self.ls_sam_slider.setMaximum(100)
-        self.ls_sam_slider.setSliderPosition(default_label_opacity)
+        self.ls_sam_slider.setSliderPosition(default_sam_opacity)
         self.ls_sam_slider.valueChanged.connect(self.on_ls_sam_slider_change)
+
+        default_roi_opacity = 20
+        self.ls_roi_value = QLabel()
+        self.ls_roi_value.setText(f"ROI opacity: {default_roi_opacity}%")
+        self.ls_roi_slider = QSlider()
+        self.ls_roi_slider.setOrientation(Qt.Orientation.Horizontal)
+        self.ls_roi_slider.setMinimum(0)
+        self.ls_roi_slider.setMaximum(100)
+        self.ls_roi_slider.setSliderPosition(default_roi_opacity)
+        self.ls_roi_slider.valueChanged.connect(self.on_ls_roi_slider_change)
 
         ls_vlay = QVBoxLayout(ls_group)
         ls_vlay.addWidget(self.ls_label_value)
         ls_vlay.addWidget(self.ls_label_slider)
+        ls_vlay.addWidget(self.ls_roi_value)
+        ls_vlay.addWidget(self.ls_roi_slider)
         ls_vlay.addWidget(self.ls_sam_value)
         ls_vlay.addWidget(self.ls_sam_slider)
 
@@ -201,6 +213,11 @@ class MainWindow(QMainWindow):
         self._graphics_view.set_sam_opacity(value)
 
     @pyqtSlot(int)
+    def on_ls_roi_slider_change(self, value: int):
+        self.ls_roi_value.setText(f"ROI opacity: {value}%")
+        self._graphics_view.set_roi_opacity(value)
+
+    @pyqtSlot(int)
     def on_bs_slider_change(self, value: int):
         self.bs_value.setText(f"Size: {value} px")
         self._graphics_view.set_brush_size(value)
@@ -244,10 +261,15 @@ class MainWindow(QMainWindow):
 
     def _load_sample(self, image_path: Path, fit: bool = True):
         self._data_store.current_image_path = image_path
-        name = image_path.stem + ".png"
-        label_path = self._data_store.label_dir / name
-        sam_path = self._data_store.sam_dir / name
-        self._graphics_view.load_sample(image_path, label_path, sam_path, fit=fit)
+
+        label_path = self._data_store.get_current_label_path()
+        sam_path = self._data_store.get_current_sam_path()
+        roi_path = self._data_store.get_current_roi_path()
+
+        self._graphics_view.load_sample(
+            image_path, label_path, sam_path, roi_path, fit=fit
+        )
+        name = image_path.stem
         self.ds_label.setText(f"{name[:30]}")
 
     def _update_label(self, label_path: Path):

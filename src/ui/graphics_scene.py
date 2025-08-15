@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
 
 from .brush_cursor import BrushCursor
 from .label_layer import LabelLayer
+from .roi_layer import RoiLayer
 from .sam_layer import SamLayer
 
 
@@ -26,6 +27,7 @@ class GraphicsScene(QGraphicsScene):
 
         self.image_item = QGraphicsPixmapItem()
         self.sam_item = SamLayer(self.image_item, self.sam2label_signal)
+        self.roi_item = RoiLayer(self.image_item)
         self.label_item = LabelLayer(self.image_item, self.label2sam_signal)
         self.cursor_item = BrushCursor(self.image_item)
 

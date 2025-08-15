@@ -48,6 +48,9 @@ class GraphicsView(QGraphicsView):
     def set_sam_opacity(self, value: int):
         self._scene.sam_item.setOpacity(value / 100.0)
 
+    def set_roi_opacity(self, value: int):
+        self._scene.roi_item.setOpacity(value / 100.0)
+
     @pyqtSlot(bool)
     def handle_sam_signal(self, is_sam: bool):
         self._sam_mode = is_sam
@@ -72,7 +75,12 @@ class GraphicsView(QGraphicsView):
         self._scene.save_label(path)
 
     def load_sample(
-        self, image_path: Path, label_path: Path, sam_path: Path, fit: bool = True
+        self,
+        image_path: Path,
+        label_path: Path,
+        sam_path: Path,
+        roi_path: Path,
+        fit: bool = True,
     ):
         image = QPixmap(str(image_path))
         self._scene.setSceneRect(QRectF(QPointF(), QSizeF(image.size())))
@@ -81,6 +89,7 @@ class GraphicsView(QGraphicsView):
         self.update_label(label_path, trigger_update=False)
 
         self.update_sam(sam_path, trigger_update=False)
+        self.update_roi(roi_path, trigger_update=False)
         if fit:
             self.fitInView(self._scene.image_item, Qt.AspectRatioMode.KeepAspectRatio)
             self.centerOn(self._scene.image_item)
@@ -96,6 +105,12 @@ class GraphicsView(QGraphicsView):
     def update_sam(self, sam_path: Path, trigger_update: bool = True):
         if sam_path.exists():
             self._scene.sam_item.set_image(str(sam_path))
+        if trigger_update:
+            self.viewport().update()
+
+    def update_roi(self, roi_path: Path, trigger_update: bool = True):
+        if roi_path.exists():
+            self._scene.roi_item.set_image(str(roi_path))
         if trigger_update:
             self.viewport().update()
 
