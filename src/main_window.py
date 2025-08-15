@@ -22,8 +22,8 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from .graphics_view import GraphicsView
-from .segmentation import SegmentationModel
+from .logic.segmentation import SegmentationModel
+from .ui.graphics_view import GraphicsView
 
 
 class MainWindow(QMainWindow):
