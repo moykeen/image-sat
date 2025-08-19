@@ -148,3 +148,6 @@ class GraphicsView(QGraphicsView):
     def wheelEvent(self, event: QWheelEvent) -> None:
         delta = event.angleDelta().y()
         self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta)
+
+    def brush_size_changed(self, new_size) -> None:
+        self._brush_feedback.emit(new_size)

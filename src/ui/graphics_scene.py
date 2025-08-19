@@ -28,8 +28,12 @@ class GraphicsScene(QGraphicsScene):
         self.image_item = QGraphicsPixmapItem()
         self.sam_item = SamLayer(self.image_item, self.sam2label_signal)
         self.roi_item = RoiLayer(self.image_item)
-        self.label_item = LabelLayer(self.image_item, self.label2sam_signal)
         self.cursor_item = BrushCursor(self.image_item)
+        self.label_item = LabelLayer(
+            self.image_item,
+            self.label2sam_signal,
+            [self.cursor_item.set_size, parent.brush_size_changed],
+        )
 
         self.label2sam_signal.connect(self.sam_item.handle_click)
         self.sam2label_signal.connect(self.label_item.handle_bundle)

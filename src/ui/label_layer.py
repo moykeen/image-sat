@@ -7,11 +7,17 @@ from PyQt5.QtWidgets import QGraphicsRectItem, QGraphicsSceneMouseEvent
 
 
 class LabelLayer(QGraphicsRectItem):
-    def __init__(self, parent, sam_signal):
+    def __init__(self, parent, sam_signal, cursor_resizing_callbacks: list[callable]):
         super().__init__(parent)
         self.setOpacity(0.35)
         self.setPen(QPen(Qt.PenStyle.NoPen))
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+
+        # Enable capturing mouse movement (without pressing) for Shift-resize
+        self.setAcceptHoverEvents(True)
+        self._last_mouse_pos = None
+        self._min_brush_size = 1
+        self._max_brush_size = 150
 
         self._sam_signal = sam_signal
         self._erase_state = False
@@ -20,6 +26,8 @@ class LabelLayer(QGraphicsRectItem):
         self._pixmap = QPixmap()
         self._line = QLineF()
         self._sam_mode = False
+
+        self.cursor_resizing_callbacks = cursor_resizing_callbacks
 
     def set_brush_color(self, color: QColor):
         self.set_eraser(False)
@@ -30,6 +38,32 @@ class LabelLayer(QGraphicsRectItem):
 
     def set_size(self, size: int):
         self._brush_size = size
+
+    def _apply_resize_dx(self, dx: int):
+        if dx == 0:
+            return
+        new_size = max(
+            self._min_brush_size, min(self._max_brush_size, self._brush_size + dx)
+        )
+        self._brush_size = new_size
+
+        for cb in self.cursor_resizing_callbacks:
+            cb(new_size)
+
+    def hoverMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        # Shift + mouse move (no button) => resize brush by horizontal delta
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            if self._last_mouse_pos is None:
+                self._last_mouse_pos = event.pos()
+            else:
+                dx = int(event.pos().x() - self._last_mouse_pos.x())
+                self._apply_resize_dx(dx)
+                self._last_mouse_pos = event.pos()
+            event.accept()
+            return
+        # Reset when Shift not held
+        self._last_mouse_pos = None
+        super().hoverMoveEvent(event)
 
     def _draw_line(self):
         painter = QPainter(self._pixmap)
@@ -83,10 +117,24 @@ class LabelLayer(QGraphicsRectItem):
         self._sam_signal.emit(event.pos())
         self._line.setP1(event.pos())
         self._line.setP2(event.pos())
+        self._last_mouse_pos = None
         super().mousePressEvent(event)
         event.accept()
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        # When Shift is held during drag, treat as resize gesture instead of drawing
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            if self._last_mouse_pos is None:
+                self._last_mouse_pos = event.pos()
+            else:
+                dx = int(event.pos().x() - self._last_mouse_pos.x())
+                self._apply_resize_dx(dx)
+                self._last_mouse_pos = event.pos()
+            event.accept()
+            return
+        # Normal drawing path
+        self._last_mouse_pos = None
+
         self._line.setP2(event.pos())
         self._draw_line()
         self._line.setP1(event.pos())
